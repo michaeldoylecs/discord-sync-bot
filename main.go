@@ -9,6 +9,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
+	"github.com/michaeldoylecs/discord-sync-bot/commands"
 )
 
 func main() {
@@ -52,8 +53,13 @@ func main() {
 
 	fmt.Println("Bot running...")
 
+	commands.AddAllCommands(discord)
+
 	// Wait for Ctrl+c interrupt
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
+
+	// Cleanup
+	commands.RemoveAllCommands(discord)
 }
