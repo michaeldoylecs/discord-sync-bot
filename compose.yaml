@@ -1,0 +1,30 @@
+services:
+  database:
+    image: postgres:16.3
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: localadmin
+      POSTGRES_PASSWORD: localpassword
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+  dbmate:
+    image: ghcr.io/amacneil/dbmate
+    depends_on:
+      database:
+        condition: service_started
+    volumes:
+      - ./db:/db
+    environment:
+      DATABASE_URL: postgres://localadmin:localpassword@database/postgres?sslmode=disable
+    command: --wait up
+  discord-bot:
+    build: .
+    depends_on:
+      dbmate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    environment:
+      DISCORD_APP_ID: ${DISCORD_APP_ID}
+      DISCORD_PUBLIC_KEY: ${DISCORD_PUBLIC_KEY}
+      DISCORD_PRIVATE_TOKEN: ${DISCORD_PRIVATE_TOKEN}

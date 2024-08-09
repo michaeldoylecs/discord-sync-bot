@@ -15,8 +15,7 @@ import (
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Printf("%s\n%s\n", "Error loading .env file", err)
-		os.Exit(1)
+		fmt.Printf("%s\n", "No .env file found.")
 	}
 
 	discordPrivateToken := os.Getenv("DISCORD_PRIVATE_TOKEN")
