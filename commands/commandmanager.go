@@ -29,8 +29,9 @@ func RegisterAllCommands(session *discordgo.Session, appCtx *config.AppCtx) {
 	// Handle guild registered commands
 	guildsCommandsMap := getCommandsForAllGuilds(session)
 	botCommandsMap := getAllBotCommands(commandConfigs)
-	changedGuildsCommandsMap := filterOutUnchangedCommands(guildsCommandsMap, botCommandsMap)
 
+	// Add/Update guild commands
+	changedGuildsCommandsMap := filterCommandsToAdd(guildsCommandsMap, botCommandsMap)
 	log.Println("Registering guild commands...")
 	for guildId, guildCommands := range changedGuildsCommandsMap {
 		log.Printf("Registering commands for guild '%s'...", guildId)
@@ -39,12 +40,29 @@ func RegisterAllCommands(session *discordgo.Session, appCtx *config.AppCtx) {
 			if err != nil {
 				log.Fatalf("Failed to create command '%s': %s\n", cmdName, err)
 			} else {
-				log.Printf("Guild %s: registered '%s' command.\n", guildId, cmdName)
+				log.Printf("Guild '%s', registered '%s' command.\n", guildId, cmdName)
 			}
 		}
 		log.Printf("Finished registering commands for guild '%s'\n", guildId)
 	}
 	log.Println("Finished registering guild commands.")
+
+	// Remove guild commands
+	removeGuildsCommandsMap := filterCommandsToRemove(guildsCommandsMap, botCommandsMap)
+	log.Println("Removing guild commands...")
+	for guildId, guildCommands := range removeGuildsCommandsMap {
+		log.Printf("Removing commands for guild '%s'...", guildId)
+		for cmdName, cmd := range guildCommands {
+			err := session.ApplicationCommandDelete(session.State.User.ID, guildId, cmd.ID)
+			if err != nil {
+				log.Fatalf("Failed to remove command '%s': %s\n", cmdName, err)
+			} else {
+				log.Printf("Guild '%s', removed '%s' command.\n", guildId, cmdName)
+			}
+		}
+		log.Printf("Finished removing commands for guild '%s'\n", guildId)
+	}
+	log.Println("Finished removing guild commands.")
 
 	// Initialize command handlers
 	initializeCommandHandlers(session, appCtx)
@@ -104,7 +122,7 @@ func getCommandsForAllGuilds(session *discordgo.Session) map[string]map[string]*
 	return guildCommandsMap
 }
 
-func filterOutUnchangedCommands(guildsCommands map[string]map[string]*discordgo.ApplicationCommand, botCommands map[string]*discordgo.ApplicationCommand) map[string]map[string]*discordgo.ApplicationCommand {
+func filterCommandsToAdd(guildsCommands map[string]map[string]*discordgo.ApplicationCommand, botCommands map[string]*discordgo.ApplicationCommand) map[string]map[string]*discordgo.ApplicationCommand {
 	newGuildsCommands := make(map[string]map[string]*discordgo.ApplicationCommand)
 	for guildId, guildCommands := range guildsCommands {
 		// Get commands guild does not have registered
@@ -116,8 +134,14 @@ func filterOutUnchangedCommands(guildsCommands map[string]map[string]*discordgo.
 			}
 		}
 
+		// Get commands that have changed
 		changedCommands := make(map[string]*discordgo.ApplicationCommand)
 		for _, cmd := range guildCommands {
+			// Do not try to update guild command if not is bot's command list.
+			// It will be handled in command removal.
+			if botCommands[cmd.Name] == nil {
+				continue
+			}
 			if !botCommandAndRegisteredCommandAreEqual(botCommands[cmd.Name], cmd) {
 				log.Printf("Command '%s' differs from guild '%s' registered value.", cmd.Name, guildId)
 				changedCommands[cmd.Name] = cmd
@@ -137,6 +161,20 @@ func filterOutUnchangedCommands(guildsCommands map[string]map[string]*discordgo.
 		newGuildsCommands[guildId] = allCommandsToRegister
 	}
 	return newGuildsCommands
+}
+
+func filterCommandsToRemove(guildsCommands map[string]map[string]*discordgo.ApplicationCommand, botCommands map[string]*discordgo.ApplicationCommand) map[string]map[string]*discordgo.ApplicationCommand {
+	guildsCommandsToRemove := make(map[string]map[string]*discordgo.ApplicationCommand)
+	for guildId, guildCommands := range guildsCommands {
+		commandsToRemove := make(map[string]*discordgo.ApplicationCommand)
+		for cmdName, cmd := range guildCommands {
+			if _, found := botCommands[cmdName]; !found {
+				commandsToRemove[cmdName] = cmd
+			}
+		}
+		guildsCommandsToRemove[guildId] = commandsToRemove
+	}
+	return guildsCommandsToRemove
 }
 
 // ORDER OF ARGUMENTS MAY MATTER!
