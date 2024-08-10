@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -8,14 +9,35 @@ import (
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/michaeldoylecs/discord-sync-bot/commands"
+	"github.com/michaeldoylecs/discord-sync-bot/config"
+	"github.com/michaeldoylecs/discord-sync-bot/db"
 )
 
 func main() {
 	err := godotenv.Load()
 	if err != nil {
 		fmt.Printf("%s\n", "No .env file found.")
+	}
+
+	dbUser := os.Getenv("POSTGRES_USER")
+	dbPass := os.Getenv("POSTGRES_PASSWORD")
+	dbName := os.Getenv("POSTGRES_DB")
+	dbAddress := os.Getenv("POSTGRES_ADDRESS")
+	dbPort := os.Getenv("POSTGRES_PORT")
+	dbConnString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPass, dbAddress, dbPort, dbName)
+
+	log.Printf("Attempting to connect to db @ '%s'\n", dbConnString)
+	conn, err := pgxpool.New(context.Background(), dbConnString)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	appCtx := &config.AppCtx{
+		DB: db.New(conn),
 	}
 
 	discordPrivateToken := os.Getenv("DISCORD_PRIVATE_TOKEN")
@@ -52,13 +74,10 @@ func main() {
 
 	fmt.Println("Bot running...")
 
-	commands.AddAllCommands(discord)
+	commands.AddAllCommands(discord, appCtx)
 
 	// Wait for Ctrl+c interrupt
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
-
-	// Cleanup
-	commands.RemoveAllCommands(discord)
 }

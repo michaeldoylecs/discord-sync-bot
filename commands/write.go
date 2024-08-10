@@ -4,9 +4,10 @@ import (
 	"log"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/michaeldoylecs/discord-sync-bot/config"
 )
 
-func addWriteCommand(discordSession *discordgo.Session) *discordgo.ApplicationCommand {
+func addWriteCommand(discordSession *discordgo.Session, _ *config.AppCtx) *discordgo.ApplicationCommand {
 	var applicationCommand = discordgo.ApplicationCommand{
 		Name:        "write-markdown",
 		Description: "Writes messages given link to a Markdown file",
