@@ -15,7 +15,7 @@ import (
 )
 
 var commandConfigSync = CommandConfig{
-	info: discordgo.ApplicationCommand{
+	info: &discordgo.ApplicationCommand{
 		Name:        "sync",
 		Description: "Sync's a channel's messages with a given file URI's contents.",
 		Options: []*discordgo.ApplicationCommandOption{

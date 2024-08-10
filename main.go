@@ -74,7 +74,7 @@ func main() {
 
 	fmt.Println("Bot running...")
 
-	commands.AddAllCommands(discord, appCtx)
+	commands.RegisterAllCommands(discord, appCtx)
 
 	// Wait for Ctrl+c interrupt
 	sc := make(chan os.Signal, 1)
