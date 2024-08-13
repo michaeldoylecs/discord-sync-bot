@@ -2,14 +2,13 @@ package commands
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"slices"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/michaeldoylecs/discord-sync-bot/config"
 	"github.com/michaeldoylecs/discord-sync-bot/db"
 )
@@ -17,14 +16,8 @@ import (
 var commandConfigSync = CommandConfig{
 	info: &discordgo.ApplicationCommand{
 		Name:        "sync",
-		Description: "Sync's a channel's messages with a given file URI's contents.",
+		Description: "Update syncs",
 		Options: []*discordgo.ApplicationCommandOption{
-			{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "file-uri",
-				Description: "File URI",
-				Required:    true,
-			},
 			{
 				Type:        discordgo.ApplicationCommandOptionString,
 				Name:        "channel-id",
@@ -40,8 +33,7 @@ var commandConfigSync = CommandConfig{
 			}
 
 			options := interaction.ApplicationCommandData().Options
-			fileUri := options[0].Value.(string)
-			channelId := options[1].Value.(string)
+			channelId := options[0].Value.(string)
 
 			// Handle channel not existing within current guild.
 			channels, err := session.GuildChannels(interaction.GuildID)
@@ -62,36 +54,144 @@ var commandConfigSync = CommandConfig{
 				})
 			}
 
-			// Add sync record to database
-			recordInfo := db.AddChannelSyncParams{
-				FileToSyncUri:           pgtype.Text{String: fileUri, Valid: true},
-				DiscordGuildSnowflake:   interaction.GuildID,
-				DiscordChannelSnowflake: channelId,
-			}
-			sync, err := appCtx.DB.AddChannelSync(context.Background(), recordInfo)
+			// Get file contents
+			fileToSync, err := appCtx.DB.GetGuildChannelSync(context.Background(), db.GetGuildChannelSyncParams{
+				GuildID:   interaction.GuildID,
+				ChannelID: channelId,
+			})
 			if err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					log.Printf("Failed to add sync record to database: %+v\n", recordInfo)
-				} else {
+				log.Println(err)
+				return
+			}
+
+			oldFileContents := fileToSync.FileContents
+			fileUri := fileToSync.FileToSyncUri
+			fileContentsResponse, err := http.Get(fileUri)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			if fileContentsResponse.StatusCode != http.StatusOK {
+				log.Printf("Failed to GET '%s'\n", fileUri)
+				return
+			}
+			fileBytes, err := io.ReadAll(fileContentsResponse.Body)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			fileContents := string(fileBytes)
+
+			// Compare current file contents with previously synced contents.
+			if oldFileContents == fileContents {
+				// Respond that messages are already in-sync
+				log.Println("Files already match. No need to sync")
+				return
+			}
+
+			// Chunk the file contents to fit within discord message limits.
+			messageCharacterLimit := 1950
+			contentChunks := make([]string, 0, len(fileContents)/messageCharacterLimit+1)
+			remainder := fileContents
+			for len(remainder) > messageCharacterLimit {
+				cursor := 1950
+				for remainder[cursor] != '\n' && cursor >= 0 {
+					cursor--
+				}
+				contentChunks = append(contentChunks, remainder[:cursor])
+				remainder = remainder[cursor+1:]
+			}
+			if len(remainder) > 0 {
+				contentChunks = append(contentChunks, remainder)
+			}
+
+			// Get current content chunks if they exist in db
+			existingMessageChunkRows, err := appCtx.DB.GetFileContentChunks(context.Background(), channelId)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+
+			// Associate existing message chunk ids with new chunks to update instead of making new mesages
+			msg_ids := make([]string, len(contentChunks))
+			for i := range existingMessageChunkRows {
+				if i > len(msg_ids) {
+					break
+				}
+				chunk_index := existingMessageChunkRows[i].ChunkNumber - 1
+				chunk_message_id := existingMessageChunkRows[i].DiscordMessageID
+				msg_ids[chunk_index] = chunk_message_id
+			}
+
+			// Send discord messages with the chunks.
+			log.Println("Attempting to send channel messages...")
+			for i, chunk := range contentChunks {
+				// Update existing message
+				if msg_ids[i] != "" {
+					_, err := session.ChannelMessageEdit(channelId, msg_ids[i], chunk)
+					if err != nil {
+						log.Println(err)
+						return
+					}
+					continue
+				}
+
+				// Send new message
+				msg, err := session.ChannelMessageSend(channelId, chunk)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				msg_ids[i] = msg.ID
+			}
+
+			// Remove excess pre-existing messages
+			for i := range existingMessageChunkRows[len(msg_ids):] {
+				msg_id := existingMessageChunkRows[i].DiscordMessageID
+				err := session.ChannelMessageDelete(channelId, msg_id)
+				if err != nil {
 					log.Println(err)
 				}
-				session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
-					Type: discordgo.InteractionResponseChannelMessageWithSource,
-					Data: &discordgo.InteractionResponseData{
-						Content: err.Error(),
-					},
-				})
+			}
+
+			// Update database with content chunk info
+			_, err = appCtx.DB.AddFileContentChunks(context.Background(), db.AddFileContentChunksParams{
+				FilesToSyncFk:     fileToSync.ID,
+				ChunkNumbers:      makeInt32Range(1, int32(len(msg_ids))),
+				DiscordMessageIds: msg_ids,
+			})
+			if err != nil {
+				log.Println(err)
+				return
+			}
+
+			// Update file contents in db
+			err = appCtx.DB.SetFileSyncContents(context.Background(), db.SetFileSyncContentsParams{
+				FileContents: fileContents,
+				ChannelID:    channelId,
+			})
+			if err != nil {
+				log.Println(err)
 				return
 			}
 
 			// Respond to command
-			msg := fmt.Sprintf("Added Sync Record.\n%s\n<#%s>", sync.FileToSyncUri.String, sync.DiscordChannelSnowflake)
+			msg := fmt.Sprintf("Synced file to <#%s>", channelId)
 			session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					Content: msg,
+					Flags:   discordgo.MessageFlagsEphemeral,
 				},
 			})
 		})
 	},
+}
+
+func makeInt32Range(min int32, max int32) []int32 {
+	l := make([]int32, max-min+1)
+	for i := range l {
+		l[i] = min + int32(i)
+	}
+	return l
 }

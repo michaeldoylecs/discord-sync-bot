@@ -4,14 +4,19 @@
 
 package db
 
-import (
-	"github.com/jackc/pgx/v5/pgtype"
-)
+type FileChunkMessage struct {
+	ID               int64
+	FilesToSyncFk    int64
+	ChunkNumber      int32
+	DiscordMessageID string
+}
 
 type FilesToSync struct {
-	FileToSyncUri           pgtype.Text
+	FileToSyncUri           string
 	DiscordGuildSnowflake   string
 	DiscordChannelSnowflake string
+	ID                      int64
+	FileContents            string
 }
 
 type SchemaMigration struct {

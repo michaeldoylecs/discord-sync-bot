@@ -7,8 +7,6 @@ package db
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const addChannelSync = `-- name: AddChannelSync :one
@@ -16,11 +14,11 @@ INSERT INTO files_to_sync (file_to_sync_uri, discord_guild_snowflake, discord_ch
 VALUES ($1, $2, $3)
 ON CONFLICT (discord_guild_snowflake, discord_channel_snowflake)
 DO UPDATE SET file_to_sync_uri = $1
-RETURNING file_to_sync_uri, discord_guild_snowflake, discord_channel_snowflake
+RETURNING file_to_sync_uri, discord_guild_snowflake, discord_channel_snowflake, id, file_contents
 `
 
 type AddChannelSyncParams struct {
-	FileToSyncUri           pgtype.Text
+	FileToSyncUri           string
 	DiscordGuildSnowflake   string
 	DiscordChannelSnowflake string
 }
@@ -28,12 +26,117 @@ type AddChannelSyncParams struct {
 func (q *Queries) AddChannelSync(ctx context.Context, arg AddChannelSyncParams) (FilesToSync, error) {
 	row := q.db.QueryRow(ctx, addChannelSync, arg.FileToSyncUri, arg.DiscordGuildSnowflake, arg.DiscordChannelSnowflake)
 	var i FilesToSync
-	err := row.Scan(&i.FileToSyncUri, &i.DiscordGuildSnowflake, &i.DiscordChannelSnowflake)
+	err := row.Scan(
+		&i.FileToSyncUri,
+		&i.DiscordGuildSnowflake,
+		&i.DiscordChannelSnowflake,
+		&i.ID,
+		&i.FileContents,
+	)
+	return i, err
+}
+
+const addFileContentChunks = `-- name: AddFileContentChunks :many
+INSERT INTO file_chunk_messages (files_to_sync_fk, chunk_number, discord_message_id)
+VALUES ($1, unnest($2::int[]), unnest($3::varchar(20)[]))
+ON CONFLICT (discord_message_id)
+  DO UPDATE SET
+    chunk_number = excluded.chunk_number
+    ,discord_message_id = excluded.discord_message_id
+RETURNING id, files_to_sync_fk, chunk_number, discord_message_id
+`
+
+type AddFileContentChunksParams struct {
+	FilesToSyncFk     int64
+	ChunkNumbers      []int32
+	DiscordMessageIds []string
+}
+
+func (q *Queries) AddFileContentChunks(ctx context.Context, arg AddFileContentChunksParams) ([]FileChunkMessage, error) {
+	rows, err := q.db.Query(ctx, addFileContentChunks, arg.FilesToSyncFk, arg.ChunkNumbers, arg.DiscordMessageIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileChunkMessage
+	for rows.Next() {
+		var i FileChunkMessage
+		if err := rows.Scan(
+			&i.ID,
+			&i.FilesToSyncFk,
+			&i.ChunkNumber,
+			&i.DiscordMessageID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getFileContentChunks = `-- name: GetFileContentChunks :many
+SELECT
+  fcm.chunk_number
+  ,fcm.discord_message_id
+FROM file_chunk_messages fcm
+JOIN files_to_sync fts ON fts.id = fcm.files_to_sync_fk
+WHERE fts.discord_channel_snowflake = $1
+`
+
+type GetFileContentChunksRow struct {
+	ChunkNumber      int32
+	DiscordMessageID string
+}
+
+func (q *Queries) GetFileContentChunks(ctx context.Context, channelID string) ([]GetFileContentChunksRow, error) {
+	rows, err := q.db.Query(ctx, getFileContentChunks, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetFileContentChunksRow
+	for rows.Next() {
+		var i GetFileContentChunksRow
+		if err := rows.Scan(&i.ChunkNumber, &i.DiscordMessageID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getGuildChannelSync = `-- name: GetGuildChannelSync :one
+SELECT file_to_sync_uri, discord_guild_snowflake, discord_channel_snowflake, id, file_contents FROM files_to_sync
+WHERE discord_guild_snowflake = $1
+  AND discord_channel_snowflake = $2
+`
+
+type GetGuildChannelSyncParams struct {
+	GuildID   string
+	ChannelID string
+}
+
+func (q *Queries) GetGuildChannelSync(ctx context.Context, arg GetGuildChannelSyncParams) (FilesToSync, error) {
+	row := q.db.QueryRow(ctx, getGuildChannelSync, arg.GuildID, arg.ChannelID)
+	var i FilesToSync
+	err := row.Scan(
+		&i.FileToSyncUri,
+		&i.DiscordGuildSnowflake,
+		&i.DiscordChannelSnowflake,
+		&i.ID,
+		&i.FileContents,
+	)
 	return i, err
 }
 
 const getGuildSyncs = `-- name: GetGuildSyncs :many
-SELECT file_to_sync_uri, discord_guild_snowflake, discord_channel_snowflake FROM files_to_sync
+SELECT file_to_sync_uri, discord_guild_snowflake, discord_channel_snowflake, id, file_contents FROM files_to_sync
 WHERE discord_guild_snowflake = $1
 `
 
@@ -46,7 +149,13 @@ func (q *Queries) GetGuildSyncs(ctx context.Context, discordGuildSnowflake strin
 	var items []FilesToSync
 	for rows.Next() {
 		var i FilesToSync
-		if err := rows.Scan(&i.FileToSyncUri, &i.DiscordGuildSnowflake, &i.DiscordChannelSnowflake); err != nil {
+		if err := rows.Scan(
+			&i.FileToSyncUri,
+			&i.DiscordGuildSnowflake,
+			&i.DiscordChannelSnowflake,
+			&i.ID,
+			&i.FileContents,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -55,4 +164,29 @@ func (q *Queries) GetGuildSyncs(ctx context.Context, discordGuildSnowflake strin
 		return nil, err
 	}
 	return items, nil
+}
+
+const removeFileContentChunks = `-- name: RemoveFileContentChunks :exec
+DELETE FROM file_chunk_messages WHERE files_to_sync_fk = $1
+`
+
+func (q *Queries) RemoveFileContentChunks(ctx context.Context, fileToSyncFk int64) error {
+	_, err := q.db.Exec(ctx, removeFileContentChunks, fileToSyncFk)
+	return err
+}
+
+const setFileSyncContents = `-- name: SetFileSyncContents :exec
+UPDATE files_to_sync
+SET file_contents = $1
+WHERE discord_channel_snowflake = $2
+`
+
+type SetFileSyncContentsParams struct {
+	FileContents string
+	ChannelID    string
+}
+
+func (q *Queries) SetFileSyncContents(ctx context.Context, arg SetFileSyncContentsParams) error {
+	_, err := q.db.Exec(ctx, setFileSyncContents, arg.FileContents, arg.ChannelID)
+	return err
 }

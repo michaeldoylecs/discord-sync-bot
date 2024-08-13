@@ -14,14 +14,66 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: file_chunk_messages; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.file_chunk_messages (
+    id bigint NOT NULL,
+    files_to_sync_fk bigint NOT NULL,
+    chunk_number integer NOT NULL,
+    discord_message_id character varying(20) NOT NULL
+);
+
+
+--
+-- Name: file_chunk_messages_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.file_chunk_messages_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: file_chunk_messages_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.file_chunk_messages_id_seq OWNED BY public.file_chunk_messages.id;
+
+
+--
 -- Name: files_to_sync; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.files_to_sync (
-    file_to_sync_uri character varying(512),
+    file_to_sync_uri character varying(512) DEFAULT ''::character varying NOT NULL,
     discord_guild_snowflake character varying(20) NOT NULL,
-    discord_channel_snowflake character varying(20) NOT NULL
+    discord_channel_snowflake character varying(20) NOT NULL,
+    id bigint NOT NULL,
+    file_contents text DEFAULT ''::text NOT NULL
 );
+
+
+--
+-- Name: files_to_sync_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.files_to_sync_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: files_to_sync_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.files_to_sync_id_seq OWNED BY public.files_to_sync.id;
 
 
 --
@@ -34,11 +86,57 @@ CREATE TABLE public.schema_migrations (
 
 
 --
+-- Name: file_chunk_messages id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.file_chunk_messages ALTER COLUMN id SET DEFAULT nextval('public.file_chunk_messages_id_seq'::regclass);
+
+
+--
+-- Name: files_to_sync id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.files_to_sync ALTER COLUMN id SET DEFAULT nextval('public.files_to_sync_id_seq'::regclass);
+
+
+--
+-- Name: file_chunk_messages file_chunk_messages_chunk_number_discord_message_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.file_chunk_messages
+    ADD CONSTRAINT file_chunk_messages_chunk_number_discord_message_id_key UNIQUE (chunk_number, discord_message_id);
+
+
+--
+-- Name: file_chunk_messages file_chunk_messages_discord_message_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.file_chunk_messages
+    ADD CONSTRAINT file_chunk_messages_discord_message_id_key UNIQUE (discord_message_id);
+
+
+--
+-- Name: file_chunk_messages file_chunk_messages_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.file_chunk_messages
+    ADD CONSTRAINT file_chunk_messages_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: files_to_sync files_to_sync_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.files_to_sync
-    ADD CONSTRAINT files_to_sync_pkey PRIMARY KEY (discord_guild_snowflake, discord_channel_snowflake);
+    ADD CONSTRAINT files_to_sync_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: files_to_sync files_to_sync_unique_channel; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.files_to_sync
+    ADD CONSTRAINT files_to_sync_unique_channel UNIQUE (discord_guild_snowflake, discord_channel_snowflake);
 
 
 --
@@ -47,6 +145,14 @@ ALTER TABLE ONLY public.files_to_sync
 
 ALTER TABLE ONLY public.schema_migrations
     ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
+
+
+--
+-- Name: file_chunk_messages file_chunk_messages_files_to_sync_fk_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.file_chunk_messages
+    ADD CONSTRAINT file_chunk_messages_files_to_sync_fk_fkey FOREIGN KEY (files_to_sync_fk) REFERENCES public.files_to_sync(id);
 
 
 --
@@ -59,4 +165,5 @@ ALTER TABLE ONLY public.schema_migrations
 --
 
 INSERT INTO public.schema_migrations (version) VALUES
-    ('20240808225441');
+    ('20240808225441'),
+    ('20240811003207');

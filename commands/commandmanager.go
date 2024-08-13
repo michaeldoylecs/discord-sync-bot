@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"log"
 
 	"github.com/bwmarrin/discordgo"
@@ -16,7 +17,9 @@ type CommandConfig struct {
 	handler CommandHandler
 }
 
+// Keep sorted alphanumerically for readability.
 var commandConfigs = []CommandConfig{
+	commandConfigAddSync,
 	commandConfigSync,
 }
 
@@ -36,11 +39,12 @@ func RegisterAllCommands(session *discordgo.Session, appCtx *config.AppCtx) {
 	for guildId, guildCommands := range changedGuildsCommandsMap {
 		log.Printf("Registering commands for guild '%s'...", guildId)
 		for cmdName, cmd := range guildCommands {
-			_, err := session.ApplicationCommandCreate(session.State.User.ID, guildId, cmd)
+			log.Printf("Guild '%s', attemping to register command: %s\n", guildId, prettyString(cmd))
+			regCmd, err := session.ApplicationCommandCreate(session.State.User.ID, guildId, cmd)
 			if err != nil {
 				log.Fatalf("Failed to create command '%s': %s\n", cmdName, err)
 			} else {
-				log.Printf("Guild '%s', registered '%s' command.\n", guildId, cmdName)
+				log.Printf("Guild '%s', registered command: %s\n", guildId, prettyString(regCmd))
 			}
 		}
 		log.Printf("Finished registering commands for guild '%s'\n", guildId)
@@ -85,7 +89,7 @@ func unregisterGlobalCommands(session *discordgo.Session) {
 	for _, command := range globallyRegisteredCommands {
 		err := session.ApplicationCommandDelete(session.State.User.ID, "", command.ID)
 		if err != nil {
-			log.Printf("Failed to delete command '%v', %v\n", command.Name, err)
+			log.Fatalf("Failed to delete command '%v', %v\n", command.Name, err)
 		}
 		log.Printf("Removed global command '%v'\n", command.Name)
 	}
@@ -144,7 +148,9 @@ func filterCommandsToAdd(guildsCommands map[string]map[string]*discordgo.Applica
 			}
 			if !botCommandAndRegisteredCommandAreEqual(botCommands[cmd.Name], cmd) {
 				log.Printf("Command '%s' differs from guild '%s' registered value.", cmd.Name, guildId)
-				changedCommands[cmd.Name] = cmd
+				log.Printf("Bot command: %s\n", prettyString(botCommands[cmd.Name]))
+				log.Printf("Registered command: %s\n", prettyString(cmd))
+				changedCommands[cmd.Name] = botCommands[cmd.Name]
 			} else {
 				log.Printf("Command '%s' matches registered command in guild '%s', ignoring.", cmd.Name, guildId)
 			}
@@ -230,4 +236,12 @@ func botCommandAndRegisteredCommandAreEqual(botCmd *discordgo.ApplicationCommand
 	}
 	// log.Printf("'%t' '%t'\n", *botCmd.NSFW, *regCmd.NSFW)
 	return (*botCmd.NSFW == *regCmd.NSFW)
+}
+
+func prettyString(v any) string {
+	bytes, err := json.MarshalIndent(v, "", "\t")
+	if err != nil {
+		panic(err)
+	}
+	return string(bytes)
 }
