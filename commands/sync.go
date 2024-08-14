@@ -103,20 +103,7 @@ var commandConfigSync = CommandConfig{
 			}
 
 			// Chunk the file contents to fit within discord message limits.
-			messageCharacterLimit := 1950
-			contentChunks := make([]string, 0, len(fileContents)/messageCharacterLimit+1)
-			remainder := fileContents
-			for len(remainder) > messageCharacterLimit {
-				cursor := 1950
-				for remainder[cursor] != '\n' && cursor >= 0 {
-					cursor--
-				}
-				contentChunks = append(contentChunks, remainder[:cursor])
-				remainder = remainder[cursor+1:]
-			}
-			if len(remainder) > 0 {
-				contentChunks = append(contentChunks, remainder)
-			}
+			contentChunks := chunkContents(fileContents, 1950)
 
 			// Get current content chunks if they exist in db
 			existingMessageChunkRows, err := appCtx.DB.GetFileContentChunks(context.Background(), channelId)
@@ -225,4 +212,21 @@ func makeInt32Range(min int32, max int32) []int32 {
 		l[i] = min + int32(i)
 	}
 	return l
+}
+
+func chunkContents(contents string, maxChunkSize int) []string {
+	chunks := make([]string, 0, len(contents)/maxChunkSize+1)
+	remainder := contents
+	for len(remainder) > maxChunkSize {
+		cursor := 1950
+		for remainder[cursor] != '\n' && cursor >= 0 {
+			cursor--
+		}
+		chunks = append(chunks, remainder[:cursor])
+		remainder = remainder[cursor+1:]
+	}
+	if len(remainder) > 0 {
+		chunks = append(chunks, remainder)
+	}
+	return chunks
 }

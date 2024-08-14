@@ -53,27 +53,12 @@ func main() {
 		DB: db.New(conn),
 	}
 
+	// Initialize discord session
 	discordPrivateToken := os.Getenv("DISCORD_PRIVATE_TOKEN")
-
 	discord, err := discordgo.New("Bot " + discordPrivateToken)
 	if err != nil {
 		log.Fatal().Err(err)
 	}
-
-	discord.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
-		// Ignore message if it was sent by the bot
-		if m.Author.ID == s.State.User.ID {
-			return
-		}
-
-		if m.Content == "hello" {
-			_, err := s.ChannelMessageSend(m.ChannelID, "world!")
-			if err != nil {
-				log.Fatal().Err(err)
-			}
-		}
-	})
-
 	discord.Identify.Intents = discordgo.IntentsGuildMessages
 
 	err = discord.Open()
@@ -82,6 +67,7 @@ func main() {
 	}
 	defer discord.Close()
 
+	// Register discord slash commands
 	commands.RegisterAllCommands(discord, appCtx)
 
 	// Wait for Ctrl+c interrupt
