@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"slices"
 
@@ -32,13 +31,22 @@ var commandConfigSync = CommandConfig{
 				return
 			}
 
+			// Create logger with command relevant info
+			logger := newInteractionLogger(interaction.Interaction)
+			defer logExecutionTime(logger, "Command finished executing.")()
+			logger.Info().Msg("Command started.")
+
+			// Parse arguments
 			options := interaction.ApplicationCommandData().Options
 			channelId := options[0].Value.(string)
+			logger.Info().
+				Interface("arguments", options).
+				Msg("Command arguments parsed.")
 
 			// Handle channel not existing within current guild.
 			channels, err := session.GuildChannels(interaction.GuildID)
 			if err != nil {
-				log.Println(err)
+				logger.Error().Err(err)
 			}
 
 			if !slices.ContainsFunc(channels, func(c *discordgo.Channel) bool {
@@ -60,7 +68,8 @@ var commandConfigSync = CommandConfig{
 				ChannelID: channelId,
 			})
 			if err != nil {
-				log.Println(err)
+				logger.Error().Err(err)
+				sendErrorResponse(session, interaction.Interaction)
 				return
 			}
 
@@ -68,16 +77,19 @@ var commandConfigSync = CommandConfig{
 			fileUri := fileToSync.FileToSyncUri
 			fileContentsResponse, err := http.Get(fileUri)
 			if err != nil {
-				log.Println(err)
+				logger.Error().Err(err)
+				sendErrorResponse(session, interaction.Interaction)
 				return
 			}
 			if fileContentsResponse.StatusCode != http.StatusOK {
-				log.Printf("Failed to GET '%s'\n", fileUri)
+				logger.Warn().Str("file_uri", fileUri).Msg("Failed to GET file.")
+				sendErrorResponse(session, interaction.Interaction)
 				return
 			}
 			fileBytes, err := io.ReadAll(fileContentsResponse.Body)
 			if err != nil {
-				log.Println(err)
+				logger.Error().Err(err)
+				sendErrorResponse(session, interaction.Interaction)
 				return
 			}
 			fileContents := string(fileBytes)
@@ -85,7 +97,8 @@ var commandConfigSync = CommandConfig{
 			// Compare current file contents with previously synced contents.
 			if oldFileContents == fileContents {
 				// Respond that messages are already in-sync
-				log.Println("Files already match. No need to sync")
+				logger.Info().Msg("Files already match. No need to sync.")
+				sendEphemeralResponse(session, interaction.Interaction, "Files already match. No sync needed.")
 				return
 			}
 
@@ -108,7 +121,8 @@ var commandConfigSync = CommandConfig{
 			// Get current content chunks if they exist in db
 			existingMessageChunkRows, err := appCtx.DB.GetFileContentChunks(context.Background(), channelId)
 			if err != nil {
-				log.Println(err)
+				logger.Error().Err(err)
+				sendErrorResponse(session, interaction.Interaction)
 				return
 			}
 
@@ -124,14 +138,21 @@ var commandConfigSync = CommandConfig{
 			}
 
 			// Send discord messages with the chunks.
-			log.Println("Attempting to send channel messages...")
+			logger.Info().Msg("Attempting to send channel messages...")
 			for i, chunk := range contentChunks {
 				// Update existing message
 				if msg_ids[i] != "" {
-					_, err := session.ChannelMessageEdit(channelId, msg_ids[i], chunk)
+					msg, err := session.ChannelMessageEdit(channelId, msg_ids[i], chunk)
 					if err != nil {
-						log.Println(err)
+						logger.Error().Err(err)
+						sendErrorResponse(session, interaction.Interaction)
 						return
+					} else {
+						logger.Info().
+							Str("message_channel_id", msg.ChannelID).
+							Str("message_id", msg_ids[i]).
+							Int("message_chunk_num", i+1).
+							Msg("Updated message.")
 					}
 					continue
 				}
@@ -139,8 +160,15 @@ var commandConfigSync = CommandConfig{
 				// Send new message
 				msg, err := session.ChannelMessageSend(channelId, chunk)
 				if err != nil {
-					log.Println(err)
+					logger.Error().Err(err)
+					sendErrorResponse(session, interaction.Interaction)
 					return
+				} else {
+					logger.Info().
+						Str("message_channel_id", msg.ChannelID).
+						Str("message_id", msg.ID).
+						Int("message_chunk_num", i+1).
+						Msg("Updated message.")
 				}
 				msg_ids[i] = msg.ID
 			}
@@ -150,7 +178,8 @@ var commandConfigSync = CommandConfig{
 				msg_id := existingMessageChunkRows[i].DiscordMessageID
 				err := session.ChannelMessageDelete(channelId, msg_id)
 				if err != nil {
-					log.Println(err)
+					logger.Error().Err(err)
+					sendErrorResponse(session, interaction.Interaction)
 				}
 			}
 
@@ -161,7 +190,8 @@ var commandConfigSync = CommandConfig{
 				DiscordMessageIds: msg_ids,
 			})
 			if err != nil {
-				log.Println(err)
+				logger.Error().Err(err)
+				sendErrorResponse(session, interaction.Interaction)
 				return
 			}
 
@@ -171,7 +201,8 @@ var commandConfigSync = CommandConfig{
 				ChannelID:    channelId,
 			})
 			if err != nil {
-				log.Println(err)
+				logger.Error().Err(err)
+				sendErrorResponse(session, interaction.Interaction)
 				return
 			}
 

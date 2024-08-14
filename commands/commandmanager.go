@@ -1,12 +1,14 @@
 package commands
 
 import (
-	"encoding/json"
-	"log"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/uuid"
 	"github.com/michaeldoylecs/discord-sync-bot/config"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
 
@@ -25,9 +27,9 @@ var commandConfigs = []CommandConfig{
 
 func RegisterAllCommands(session *discordgo.Session, appCtx *config.AppCtx) {
 	// Handle globally registered commands
-	log.Println("Unregistering globally registered commands...")
+	log.Info().Msg("Unregistering globally registered commands...")
 	unregisterGlobalCommands(session)
-	log.Println("Finished unregistering globally registered commands.")
+	log.Info().Msg("Finished unregistering globally registered commands.")
 
 	// Handle guild registered commands
 	guildsCommandsMap := getCommandsForAllGuilds(session)
@@ -35,38 +37,49 @@ func RegisterAllCommands(session *discordgo.Session, appCtx *config.AppCtx) {
 
 	// Add/Update guild commands
 	changedGuildsCommandsMap := filterCommandsToAdd(guildsCommandsMap, botCommandsMap)
-	log.Println("Registering guild commands...")
+	log.Info().Msg("Started Registering all guild commands.")
+	logRegisterAllCommandsTime := logExecutionTime(log.Logger, "Finished registering all guild commands.")
 	for guildId, guildCommands := range changedGuildsCommandsMap {
-		log.Printf("Registering commands for guild '%s'...", guildId)
-		for cmdName, cmd := range guildCommands {
-			log.Printf("Guild '%s', attemping to register command: %s\n", guildId, prettyString(cmd))
+		log.Info().Str("guild_id", guildId).Msg("Started registering individual guild commands.")
+		logRegisterGuildCommands := logExecutionTime(log.Logger.With().Str("guild_id", guildId).Logger(),
+			"Finished registering individual guild commands.",
+		)
+		for _, cmd := range guildCommands {
+			log.Info().Str("guild_id", guildId).Interface("application_command", cmd).
+				Msg("Attemping to register command.")
 			regCmd, err := session.ApplicationCommandCreate(session.State.User.ID, guildId, cmd)
 			if err != nil {
-				log.Fatalf("Failed to create command '%s': %s\n", cmdName, err)
+				log.Fatal().Err(err).Str("guild_id", guildId).Interface("application_command", cmd).
+					Msg("Failed to create command")
 			} else {
-				log.Printf("Guild '%s', registered command: %s\n", guildId, prettyString(regCmd))
+				log.Info().Str("guild_id", guildId).Interface("application_command", regCmd).
+					Msg("Successfully registered command.")
 			}
 		}
-		log.Printf("Finished registering commands for guild '%s'\n", guildId)
+		logRegisterGuildCommands()
 	}
-	log.Println("Finished registering guild commands.")
+	logRegisterAllCommandsTime()
 
 	// Remove guild commands
 	removeGuildsCommandsMap := filterCommandsToRemove(guildsCommandsMap, botCommandsMap)
-	log.Println("Removing guild commands...")
+	log.Info().Msg("Started removing commands for all guilds.")
+	logRemoveAllCommandsTime := logExecutionTime(log.Logger, "Finished removing commands for all guilds.")
 	for guildId, guildCommands := range removeGuildsCommandsMap {
-		log.Printf("Removing commands for guild '%s'...", guildId)
-		for cmdName, cmd := range guildCommands {
+		log.Info().Str("guild_id", guildId).Msg("Started removing commands for specific guild.")
+		logRemoveGuildCommandsTime := logExecutionTime(log.Logger.With().Str("guild_id", guildId).Logger(),
+			"Finished removing commands for specific guild.",
+		)
+		for _, cmd := range guildCommands {
 			err := session.ApplicationCommandDelete(session.State.User.ID, guildId, cmd.ID)
 			if err != nil {
-				log.Fatalf("Failed to remove command '%s': %s\n", cmdName, err)
+				log.Fatal().Err(err).Interface("command", cmd).Msg("Failed to remove command.")
 			} else {
-				log.Printf("Guild '%s', removed '%s' command.\n", guildId, cmdName)
+				log.Info().Str("guild_id", guildId).Interface("command", cmd).Msg("Successfully removed command.")
 			}
 		}
-		log.Printf("Finished removing commands for guild '%s'\n", guildId)
+		logRemoveGuildCommandsTime()
 	}
-	log.Println("Finished removing guild commands.")
+	logRemoveAllCommandsTime()
 
 	// Initialize command handlers
 	initializeCommandHandlers(session, appCtx)
@@ -75,6 +88,7 @@ func RegisterAllCommands(session *discordgo.Session, appCtx *config.AppCtx) {
 func initializeCommandHandlers(session *discordgo.Session, appCtx *config.AppCtx) {
 	for _, config := range commandConfigs {
 		config.handler(session, appCtx)
+		log.Info().Str("command_name", config.info.Name).Msg("Command handler initialized.")
 	}
 }
 
@@ -82,16 +96,16 @@ func unregisterGlobalCommands(session *discordgo.Session) {
 	// Get globally registered commands
 	globallyRegisteredCommands, err := session.ApplicationCommands(session.State.User.ID, "")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 
 	// Remove globally registered commands
 	for _, command := range globallyRegisteredCommands {
 		err := session.ApplicationCommandDelete(session.State.User.ID, "", command.ID)
 		if err != nil {
-			log.Fatalf("Failed to delete command '%v', %v\n", command.Name, err)
+			log.Fatal().Err(err).Str("command_name", command.Name).Msg("Failed to remove command.")
 		}
-		log.Printf("Removed global command '%v'\n", command.Name)
+		log.Info().Str("command_name", command.Name).Msg("Successfully removed command.")
 	}
 }
 
@@ -113,7 +127,7 @@ func getCommandsForAllGuilds(session *discordgo.Session) map[string]map[string]*
 	for _, guildId := range guildIds {
 		commands, err := session.ApplicationCommands(session.State.User.ID, guildId)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal().Err(err)
 		}
 
 		commandMap := make(map[string]*discordgo.ApplicationCommand)
@@ -133,7 +147,8 @@ func filterCommandsToAdd(guildsCommands map[string]map[string]*discordgo.Applica
 		unregisteredCommands := make(map[string]*discordgo.ApplicationCommand)
 		for botCmdName, botCmd := range botCommands {
 			if _, found := guildCommands[botCmdName]; !found {
-				log.Printf("Command '%s' not found in guild '%s', adding.", botCmdName, guildId)
+				log.Info().Str("guild_id", guildId).Str("command_name", botCmdName).
+					Msg("Command not found in guild, adding.")
 				unregisteredCommands[botCmdName] = botCmd
 			}
 		}
@@ -147,12 +162,15 @@ func filterCommandsToAdd(guildsCommands map[string]map[string]*discordgo.Applica
 				continue
 			}
 			if !botCommandAndRegisteredCommandAreEqual(botCommands[cmd.Name], cmd) {
-				log.Printf("Command '%s' differs from guild '%s' registered value.", cmd.Name, guildId)
-				log.Printf("Bot command: %s\n", prettyString(botCommands[cmd.Name]))
-				log.Printf("Registered command: %s\n", prettyString(cmd))
+				log.Debug().
+					Str("guild_id", guildId).
+					Interface("bot_command", botCommands[cmd.Name]).
+					Interface("registered_command", cmd).
+					Msg("Bot command differs from registered guild command.")
 				changedCommands[cmd.Name] = botCommands[cmd.Name]
 			} else {
-				log.Printf("Command '%s' matches registered command in guild '%s', ignoring.", cmd.Name, guildId)
+				log.Info().Str("guild_id", guildId).Str("command_name", cmd.Name).
+					Msg("Bot command matches registered guild command, ignoring.")
 			}
 		}
 
@@ -238,10 +256,54 @@ func botCommandAndRegisteredCommandAreEqual(botCmd *discordgo.ApplicationCommand
 	return (*botCmd.NSFW == *regCmd.NSFW)
 }
 
-func prettyString(v any) string {
-	bytes, err := json.MarshalIndent(v, "", "\t")
-	if err != nil {
-		panic(err)
+func newInteractionLogger(interaction *discordgo.Interaction) zerolog.Logger {
+	var userId string
+	if interaction.User != nil {
+		userId = interaction.User.ID
+	} else {
+		userId = interaction.Member.User.ID
 	}
-	return string(bytes)
+
+	isDM := interaction.Member == nil
+
+	return log.With().
+		Str("trace_id", uuid.New().String()).
+		Str("interaction_command_name", interaction.ApplicationCommandData().Name).
+		Str("interaction_guild_id", interaction.GuildID).
+		Str("interaction_channel_id", interaction.ChannelID).
+		Str("interaction_user_id", userId).
+		Bool("interaction_is_dm", isDM).
+		Logger()
+}
+
+// Must call with defer and trailing (), or store return value in a variable and call again later.
+// Ex:
+//
+//		Deferred:
+//			  defer logExecutionTime(log.Logger, "Finished executing")()
+//	      // Do stuff here...
+//
+//		Re-called:
+//			  logTime := logExecutionTime(log.Logger, "Finished executing")
+//		    // Do stuff here...
+//			  logTime()
+func logExecutionTime(logger zerolog.Logger, msg string) func() {
+	start := time.Now()
+	return func() {
+		logger.Info().Str("execution_time", time.Since(start).String()).Msg(msg)
+	}
+}
+
+func sendEphemeralResponse(session *discordgo.Session, interaction *discordgo.Interaction, msg string) {
+	session.InteractionRespond(interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: msg,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+}
+
+func sendErrorResponse(session *discordgo.Session, interaction *discordgo.Interaction) {
+	sendEphemeralResponse(session, interaction, "Something went wrong. Please try again or contact bot owner.")
 }

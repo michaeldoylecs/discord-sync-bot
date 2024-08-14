@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,6 +14,9 @@ import (
 	"github.com/michaeldoylecs/discord-sync-bot/commands"
 	"github.com/michaeldoylecs/discord-sync-bot/config"
 	"github.com/michaeldoylecs/discord-sync-bot/db"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog/pkgerrors"
 )
 
 func main() {
@@ -22,6 +25,16 @@ func main() {
 		fmt.Printf("%s\n", "No .env file found.")
 	}
 
+	// Create logger
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
+	logWriter := zerolog.ConsoleWriter{
+		Out:        os.Stderr,
+		TimeFormat: time.RFC3339Nano,
+	}
+	log.Logger = zerolog.New(logWriter).With().Timestamp().Logger()
+
+	// Initialize database connection pool
 	dbUser := os.Getenv("POSTGRES_USER")
 	dbPass := os.Getenv("POSTGRES_PASSWORD")
 	dbName := os.Getenv("POSTGRES_DB")
@@ -29,10 +42,10 @@ func main() {
 	dbPort := os.Getenv("POSTGRES_PORT")
 	dbConnString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPass, dbAddress, dbPort, dbName)
 
-	log.Printf("Attempting to connect to db @ '%s'\n", dbConnString)
+	log.Info().Str("db-connection-string", dbConnString).Msg("Attempting to connect to database")
 	conn, err := pgxpool.New(context.Background(), dbConnString)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 	defer conn.Close()
 
@@ -44,22 +57,19 @@ func main() {
 
 	discord, err := discordgo.New("Bot " + discordPrivateToken)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 
 	discord.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
-		fmt.Println(m.Content)
-
 		// Ignore message if it was sent by the bot
 		if m.Author.ID == s.State.User.ID {
-			fmt.Printf("Ignoring message sent by bot: %s\n", m.Content)
 			return
 		}
 
 		if m.Content == "hello" {
 			_, err := s.ChannelMessageSend(m.ChannelID, "world!")
 			if err != nil {
-				fmt.Println(err)
+				log.Fatal().Err(err)
 			}
 		}
 	})
@@ -68,11 +78,9 @@ func main() {
 
 	err = discord.Open()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 	defer discord.Close()
-
-	fmt.Println("Bot running...")
 
 	commands.RegisterAllCommands(discord, appCtx)
 
