@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"slices"
 
 	"github.com/bwmarrin/discordgo"
@@ -30,6 +29,12 @@ var commandConfigAddSync = CommandConfig{
 				Description: "Channel ID",
 				Required:    true,
 			},
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "github-repo-url",
+				Description: "GitHub repo URL",
+				Required:    false,
+			},
 		},
 	},
 	handler: func(discordSession *discordgo.Session, appCtx *config.AppCtx) {
@@ -38,27 +43,35 @@ var commandConfigAddSync = CommandConfig{
 				return
 			}
 
+			// Create logger with command relevant info
+			logger := newInteractionLogger(interaction.Interaction)
+			defer logExecutionTime(logger, "Command finished executing.")()
+			logger.Info().Msg("Command started.")
+
+			// Build options map
 			options := interaction.ApplicationCommandData().Options
-			fileUri := options[0].Value.(string)
-			channelId := options[1].Value.(string)
+			optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
+			for _, opt := range options {
+				optionMap[opt.Name] = opt
+			}
+
+			fileUri := optionMap["file-uri"].StringValue()
+			channelId := optionMap["channel-id"].StringValue()
 
 			// Handle channel not existing within current guild.
 			channels, err := session.GuildChannels(interaction.GuildID)
 			if err != nil {
-				log.Println(err)
+				logger.Error().Err(err).Msg("")
+				sendErrorResponse(session, interaction.Interaction)
+				return
 			}
 
 			if !slices.ContainsFunc(channels, func(c *discordgo.Channel) bool {
 				return c.ID == channelId
 			}) {
 				msg := fmt.Sprintf("Channel: '%s' does not exist in this guild.", channelId)
-
-				session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
-					Type: discordgo.InteractionResponseChannelMessageWithSource,
-					Data: &discordgo.InteractionResponseData{
-						Content: msg,
-					},
-				})
+				sendEphemeralResponse(session, interaction.Interaction, msg)
+				return
 			}
 
 			// Add sync record to database
@@ -67,31 +80,38 @@ var commandConfigAddSync = CommandConfig{
 				DiscordGuildSnowflake:   interaction.GuildID,
 				DiscordChannelSnowflake: channelId,
 			}
-			sync, err := appCtx.DB.AddChannelSync(context.Background(), recordInfo)
+			syncRecord, err := appCtx.DB.AddChannelSync(context.Background(), recordInfo)
 			if err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					log.Printf("Failed to add sync record to database: %+v\n", recordInfo)
+					logger.Error().Interface("record_info", recordInfo).Msg("Failed to add sync record to database.")
 				} else {
-					log.Println(err)
+					logger.Error().Err(err).Msg("")
 				}
-				session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
-					Type: discordgo.InteractionResponseChannelMessageWithSource,
-					Data: &discordgo.InteractionResponseData{
-						Content: err.Error(),
-					},
-				})
+				sendErrorResponse(session, interaction.Interaction)
 				return
 			}
 
+			// Associate file with GitHub repo if provided
+			if opt, ok := optionMap["github-repo-url"]; ok {
+				githubRepoUrl := opt.StringValue()
+				_, err = appCtx.DB.AddGithubRepoFile(context.Background(), db.AddGithubRepoFileParams{
+					GithubRepoUrl: githubRepoUrl,
+					FileToSyncFk:  syncRecord.ID,
+				})
+				if err != nil {
+					if errors.Is(err, pgx.ErrNoRows) {
+						logger.Error().Interface("record_info", recordInfo).Msg("Failed to add github repo record to database.")
+					} else {
+						logger.Error().Err(err).Msg("")
+					}
+					sendErrorResponse(session, interaction.Interaction)
+					return
+				}
+			}
+
 			// Respond to command
-			msg := fmt.Sprintf("Added Sync Record.\n%s\n<#%s>", sync.FileToSyncUri, sync.DiscordChannelSnowflake)
-			session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: msg,
-					Flags:   discordgo.MessageFlagsEphemeral,
-				},
-			})
+			msg := fmt.Sprintf("Added Sync Record.\n%s\n<#%s>", syncRecord.FileToSyncUri, syncRecord.DiscordChannelSnowflake)
+			sendEphemeralResponse(session, interaction.Interaction, msg)
 		})
 	},
 }

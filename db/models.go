@@ -19,6 +19,12 @@ type FilesToSync struct {
 	FileContents            string
 }
 
+type GithubRepoFile struct {
+	ID            int64
+	GithubRepoUrl string
+	FileToSyncFk  int64
+}
+
 type SchemaMigration struct {
 	Version string
 }

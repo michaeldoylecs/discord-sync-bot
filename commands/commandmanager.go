@@ -256,6 +256,12 @@ func botCommandAndRegisteredCommandAreEqual(botCmd *discordgo.ApplicationCommand
 	return (*botCmd.NSFW == *regCmd.NSFW)
 }
 
+func NewTraceLogger() zerolog.Logger {
+	return log.With().
+		Str("trace_id", uuid.New().String()).
+		Logger()
+}
+
 func newInteractionLogger(interaction *discordgo.Interaction) zerolog.Logger {
 	var userId string
 	if interaction.User != nil {
@@ -266,8 +272,7 @@ func newInteractionLogger(interaction *discordgo.Interaction) zerolog.Logger {
 
 	isDM := interaction.Member == nil
 
-	return log.With().
-		Str("trace_id", uuid.New().String()).
+	return NewTraceLogger().With().
 		Str("interaction_command_name", interaction.ApplicationCommandData().Name).
 		Str("interaction_guild_id", interaction.GuildID).
 		Str("interaction_channel_id", interaction.ChannelID).

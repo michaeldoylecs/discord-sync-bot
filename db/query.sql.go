@@ -77,6 +77,45 @@ func (q *Queries) AddFileContentChunks(ctx context.Context, arg AddFileContentCh
 	return items, nil
 }
 
+const addGithubRepoFile = `-- name: AddGithubRepoFile :one
+INSERT INTO github_repo_files (github_repo_url, file_to_sync_fk)
+VALUES ($1, $2)
+ON CONFLICT (file_to_sync_fk)
+  DO UPDATE SET github_repo_url = $1
+RETURNING id, github_repo_url, file_to_sync_fk
+`
+
+type AddGithubRepoFileParams struct {
+	GithubRepoUrl string
+	FileToSyncFk  int64
+}
+
+func (q *Queries) AddGithubRepoFile(ctx context.Context, arg AddGithubRepoFileParams) (GithubRepoFile, error) {
+	row := q.db.QueryRow(ctx, addGithubRepoFile, arg.GithubRepoUrl, arg.FileToSyncFk)
+	var i GithubRepoFile
+	err := row.Scan(&i.ID, &i.GithubRepoUrl, &i.FileToSyncFk)
+	return i, err
+}
+
+const getChannelSync = `-- name: GetChannelSync :one
+SELECT file_to_sync_uri, discord_guild_snowflake, discord_channel_snowflake, id, file_contents
+FROM files_to_sync
+WHERE file_to_sync_uri = $1
+`
+
+func (q *Queries) GetChannelSync(ctx context.Context, fileUri string) (FilesToSync, error) {
+	row := q.db.QueryRow(ctx, getChannelSync, fileUri)
+	var i FilesToSync
+	err := row.Scan(
+		&i.FileToSyncUri,
+		&i.DiscordGuildSnowflake,
+		&i.DiscordChannelSnowflake,
+		&i.ID,
+		&i.FileContents,
+	)
+	return i, err
+}
+
 const getFileContentChunks = `-- name: GetFileContentChunks :many
 SELECT
   fcm.chunk_number
@@ -101,6 +140,52 @@ func (q *Queries) GetFileContentChunks(ctx context.Context, channelID string) ([
 	for rows.Next() {
 		var i GetFileContentChunksRow
 		if err := rows.Scan(&i.ChunkNumber, &i.DiscordMessageID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getGithubRepoSyncFiles = `-- name: GetGithubRepoSyncFiles :many
+SELECT
+  fts.id AS files_to_sync_id
+  ,fts.file_to_sync_uri AS url
+  ,fts.file_contents AS file_contents
+  ,fts.discord_guild_snowflake AS guild_id
+  ,fts.discord_channel_snowflake AS channel_id
+FROM github_repo_files grf
+  JOIN files_to_sync fts ON fts.id = grf.file_to_sync_fk
+WHERE grf.github_repo_url = $1
+`
+
+type GetGithubRepoSyncFilesRow struct {
+	FilesToSyncID int64
+	Url           string
+	FileContents  string
+	GuildID       string
+	ChannelID     string
+}
+
+func (q *Queries) GetGithubRepoSyncFiles(ctx context.Context, githubRepoUrl string) ([]GetGithubRepoSyncFilesRow, error) {
+	rows, err := q.db.Query(ctx, getGithubRepoSyncFiles, githubRepoUrl)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetGithubRepoSyncFilesRow
+	for rows.Next() {
+		var i GetGithubRepoSyncFilesRow
+		if err := rows.Scan(
+			&i.FilesToSyncID,
+			&i.Url,
+			&i.FileContents,
+			&i.GuildID,
+			&i.ChannelID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

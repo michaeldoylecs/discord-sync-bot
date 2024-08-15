@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -49,10 +51,6 @@ func main() {
 	}
 	defer conn.Close()
 
-	appCtx := &config.AppCtx{
-		DB: db.New(conn),
-	}
-
 	// Initialize discord session
 	discordPrivateToken := os.Getenv("DISCORD_PRIVATE_TOKEN")
 	discord, err := discordgo.New("Bot " + discordPrivateToken)
@@ -67,11 +65,71 @@ func main() {
 	}
 	defer discord.Close()
 
+	// Initial application context
+	appCtx := &config.AppCtx{
+		DB:             db.New(conn),
+		DiscordSession: discord,
+	}
+
 	// Register discord slash commands
 	commands.RegisterAllCommands(discord, appCtx)
+
+	// Initialize webhook listener
+	go func() {
+		log.Info().
+			Int("http_port", 8080).
+			Msg("Webhook listener started.")
+		http.HandleFunc("/github", githubWebhookHandler(*appCtx))
+		log.Fatal().Err(http.ListenAndServe(":8080", nil))
+	}()
 
 	// Wait for Ctrl+c interrupt
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
+}
+
+type GithubRepository struct {
+	Url string `json:"url"`
+}
+type GithubEventPush struct {
+	Repository GithubRepository `json:"repository"`
+}
+
+func githubWebhookHandler(appCtx config.AppCtx) func(w http.ResponseWriter, r *http.Request) {
+	logger := commands.NewTraceLogger()
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		logger.Info().Msg("Connection received.")
+		var pushEvent GithubEventPush
+		jsonDecoder := json.NewDecoder(r.Body)
+		err := jsonDecoder.Decode(&pushEvent)
+		if err != nil {
+			logger.Error().Err(err).Msg("")
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		repo_url := pushEvent.Repository.Url
+
+		// Get files associated with github repo
+		files, err := appCtx.DB.GetGithubRepoSyncFiles(context.Background(), repo_url)
+		if err != nil {
+			logger.Error().Err(err).Msg("")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Sync each file
+		for _, file := range files {
+			ctx := logger.WithContext(context.Background())
+			err := commands.SyncFileToDiscordMessages(ctx, appCtx, file.GuildID, file.ChannelID, file.Url, file.FileContents)
+			if err != nil {
+				logger.Error().Err(err).Msg("")
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		}
+
+		log.Info().Interface("request_body", pushEvent).Msg("Connection processed.")
+	}
 }

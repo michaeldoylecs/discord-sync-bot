@@ -77,6 +77,36 @@ ALTER SEQUENCE public.files_to_sync_id_seq OWNED BY public.files_to_sync.id;
 
 
 --
+-- Name: github_repo_files; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.github_repo_files (
+    id bigint NOT NULL,
+    github_repo_url character varying(512) NOT NULL,
+    file_to_sync_fk bigint NOT NULL
+);
+
+
+--
+-- Name: github_repo_files_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.github_repo_files_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: github_repo_files_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.github_repo_files_id_seq OWNED BY public.github_repo_files.id;
+
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -97,6 +127,13 @@ ALTER TABLE ONLY public.file_chunk_messages ALTER COLUMN id SET DEFAULT nextval(
 --
 
 ALTER TABLE ONLY public.files_to_sync ALTER COLUMN id SET DEFAULT nextval('public.files_to_sync_id_seq'::regclass);
+
+
+--
+-- Name: github_repo_files id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.github_repo_files ALTER COLUMN id SET DEFAULT nextval('public.github_repo_files_id_seq'::regclass);
 
 
 --
@@ -140,6 +177,30 @@ ALTER TABLE ONLY public.files_to_sync
 
 
 --
+-- Name: github_repo_files github_repo_files_file_to_sync_fk_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.github_repo_files
+    ADD CONSTRAINT github_repo_files_file_to_sync_fk_key UNIQUE (file_to_sync_fk);
+
+
+--
+-- Name: github_repo_files github_repo_files_github_repo_url_file_to_sync_fk_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.github_repo_files
+    ADD CONSTRAINT github_repo_files_github_repo_url_file_to_sync_fk_key UNIQUE (github_repo_url, file_to_sync_fk);
+
+
+--
+-- Name: github_repo_files github_repo_files_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.github_repo_files
+    ADD CONSTRAINT github_repo_files_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -156,6 +217,14 @@ ALTER TABLE ONLY public.file_chunk_messages
 
 
 --
+-- Name: github_repo_files github_repo_files_file_to_sync_fk_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.github_repo_files
+    ADD CONSTRAINT github_repo_files_file_to_sync_fk_fkey FOREIGN KEY (file_to_sync_fk) REFERENCES public.files_to_sync(id);
+
+
+--
 -- PostgreSQL database dump complete
 --
 
@@ -166,4 +235,5 @@ ALTER TABLE ONLY public.file_chunk_messages
 
 INSERT INTO public.schema_migrations (version) VALUES
     ('20240808225441'),
-    ('20240811003207');
+    ('20240811003207'),
+    ('20240814073257');

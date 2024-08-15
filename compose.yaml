@@ -33,3 +33,5 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_ADDRESS: ${POSTGRES_ADDRESS}
       POSTGRES_PORT: ${POSTGRES_PORT}
+    ports:
+      - "8080:8080"
