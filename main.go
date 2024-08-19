@@ -44,7 +44,7 @@ func main() {
 	dbPort := os.Getenv("POSTGRES_PORT")
 	dbConnString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPass, dbAddress, dbPort, dbName)
 
-	log.Info().Str("db-connection-string", dbConnString).Msg("Attempting to connect to database")
+	log.Info().Msg("Attempting to connect to database")
 	conn, err := pgxpool.New(context.Background(), dbConnString)
 	if err != nil {
 		log.Fatal().Err(err)
