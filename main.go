@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -22,11 +23,6 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		fmt.Printf("%s\n", "No .env file found.")
-	}
-
 	// Create logger
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
@@ -36,13 +32,28 @@ func main() {
 	}
 	log.Logger = zerolog.New(logWriter).With().Timestamp().Logger()
 
+	// Load ENV file
+	err := godotenv.Load()
+	if err != nil {
+		log.Info().Msg("No .env file found.")
+	}
+
+	isDebug, err := strconv.ParseBool(os.Getenv("DEBUG"))
+	if err != nil {
+		isDebug = false
+	}
+
 	// Initialize database connection pool
 	dbUser := os.Getenv("POSTGRES_USER")
 	dbPass := os.Getenv("POSTGRES_PASSWORD")
 	dbName := os.Getenv("POSTGRES_DB")
 	dbAddress := os.Getenv("POSTGRES_ADDRESS")
 	dbPort := os.Getenv("POSTGRES_PORT")
-	dbConnString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPass, dbAddress, dbPort, dbName)
+	dbSslMode := "require"
+	if isDebug {
+		dbSslMode = "disable"
+	}
+	dbConnString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", dbUser, dbPass, dbAddress, dbPort, dbName, dbSslMode)
 
 	log.Info().Msg("Attempting to connect to database")
 	conn, err := pgxpool.New(context.Background(), dbConnString)
