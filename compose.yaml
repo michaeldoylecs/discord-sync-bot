@@ -3,9 +3,9 @@ services:
     image: postgres:16.3
     restart: unless-stopped
     environment:
-      POSTGRES_USER: localadmin
-      POSTGRES_PASSWORD: localpassword
-      POSTGRES_DB: postgres
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_DB}
     ports:
       - "5432:5432"
   dbmate:
@@ -16,7 +16,7 @@ services:
     volumes:
       - ./db:/db
     environment:
-      DATABASE_URL: postgres://localadmin:localpassword@database/postgres?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL}
     command: --wait up
   discord-bot:
     build: .
@@ -28,10 +28,11 @@ services:
       DISCORD_APP_ID: ${DISCORD_APP_ID}
       DISCORD_PUBLIC_KEY: ${DISCORD_PUBLIC_KEY}
       DISCORD_PRIVATE_TOKEN: ${DISCORD_PRIVATE_TOKEN}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_ADDRESS: ${POSTGRES_ADDRESS}
-      POSTGRES_PORT: ${POSTGRES_PORT}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_DB: ${DATABASE_DB}
+      DATABASE_ADDRESS: ${DATABASE_ADDRESS}
+      DATABASE_PORT: ${DATABASE_PORT}
+      DATABASE_URL: ${DATABASE_URL}
     ports:
       - "8080:8080"

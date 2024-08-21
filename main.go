@@ -44,11 +44,11 @@ func main() {
 	}
 
 	// Initialize database connection pool
-	dbUser := os.Getenv("POSTGRES_USER")
-	dbPass := os.Getenv("POSTGRES_PASSWORD")
-	dbName := os.Getenv("POSTGRES_DB")
-	dbAddress := os.Getenv("POSTGRES_ADDRESS")
-	dbPort := os.Getenv("POSTGRES_PORT")
+	dbUser := os.Getenv("DATABASE_USER")
+	dbPass := os.Getenv("DATABASE_PASSWORD")
+	dbName := os.Getenv("DATABASE_DB")
+	dbAddress := os.Getenv("DATABASE_ADDRESS")
+	dbPort := os.Getenv("DATABASE_PORT")
 	dbSslMode := "require"
 	if isDebug {
 		dbSslMode = "disable"
