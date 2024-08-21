@@ -14,7 +14,7 @@ RUN go mod download
 
 # Build Project
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /${PROGRAM_NAME}
+RUN CGO_ENABLED=0 GOOS=linux go build -o ./${PROGRAM_NAME}
 
 # Move only necessary files into final image
 FROM scratch
