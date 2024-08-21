@@ -23,4 +23,4 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /usr/local/bin/dbmate ./dbmate
 COPY --from=build /app/db/migrations ./db/migrations
 COPY --from=build /app/${PROGRAM_NAME} ./${PROGRAM_NAME}
-CMD ["/${PROGRAM_NAME}"]
+CMD ["./${PROGRAM_NAME}"]
