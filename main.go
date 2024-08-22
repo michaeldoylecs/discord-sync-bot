@@ -58,21 +58,22 @@ func main() {
 	log.Info().Msg("Attempting to connect to database")
 	conn, err := pgxpool.New(context.Background(), dbConnString)
 	if err != nil {
-		log.Fatal().Err(err).Msg("")
+		log.Fatal().Err(err).Msg("Failed to connect to database.")
 	}
 	defer conn.Close()
 
 	// Initialize discord session
+	log.Info().Msg("Attempting authenticate with discord")
 	discordPrivateToken := os.Getenv("DISCORD_PRIVATE_TOKEN")
 	discord, err := discordgo.New("Bot " + discordPrivateToken)
 	if err != nil {
-		log.Fatal().Err(err).Msg("")
+		log.Fatal().Err(err).Msg("Failed to create new discord session.")
 	}
 	discord.Identify.Intents = discordgo.IntentsGuildMessages
 
 	err = discord.Open()
 	if err != nil {
-		log.Fatal().Err(err).Msg("")
+		log.Fatal().Err(err).Msg("Failed to create websocket connection with discord.")
 	}
 	defer discord.Close()
 
