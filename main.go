@@ -58,7 +58,7 @@ func main() {
 	log.Info().Msg("Attempting to connect to database")
 	conn, err := pgxpool.New(context.Background(), dbConnString)
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
 	}
 	defer conn.Close()
 
@@ -66,13 +66,13 @@ func main() {
 	discordPrivateToken := os.Getenv("DISCORD_PRIVATE_TOKEN")
 	discord, err := discordgo.New("Bot " + discordPrivateToken)
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
 	}
 	discord.Identify.Intents = discordgo.IntentsGuildMessages
 
 	err = discord.Open()
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("")
 	}
 	defer discord.Close()
 
