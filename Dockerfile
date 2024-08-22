@@ -14,14 +14,14 @@ RUN go mod download
 
 # Build Project
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o ./${PROGRAM_NAME}
+RUN CGO_ENABLED=0 GOOS=linux go build -o ./build/${PROGRAM_NAME}
 
 # Move only necessary files into final image
-FROM scratch
-WORKDIR /
+FROM busybox
+WORKDIR /app
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /usr/local/bin/dbmate ./dbmate
 COPY --from=build /app/db/migrations ./db/migrations
-COPY --from=build /app/${PROGRAM_NAME} ./${PROGRAM_NAME}
+COPY --from=build /app/build/${PROGRAM_NAME} ./${PROGRAM_NAME}
 EXPOSE 8080
-CMD ["./${PROGRAM_NAME}"]
+CMD ["./discord-sync-bot"]
