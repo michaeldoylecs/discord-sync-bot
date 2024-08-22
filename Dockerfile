@@ -24,4 +24,4 @@ COPY --from=build /usr/local/bin/dbmate ./dbmate
 COPY --from=build /app/db/migrations ./db/migrations
 COPY --from=build /app/build/${PROGRAM_NAME} ./${PROGRAM_NAME}
 EXPOSE 8080
-CMD ["./discord-sync-bot"]
+CMD ["/bin/sh", "-c", "./dbmate --no-dump-schema --wait up && ./discord-sync-bot"]

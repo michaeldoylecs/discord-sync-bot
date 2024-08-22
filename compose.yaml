@@ -8,21 +8,11 @@ services:
       POSTGRES_DB: ${DATABASE_DB}
     ports:
       - "5432:5432"
-  dbmate:
-    image: ghcr.io/amacneil/dbmate
-    depends_on:
-      database:
-        condition: service_started
-    volumes:
-      - ./db:/db
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-    command: --wait up
   discord-bot:
     build: .
     depends_on:
-      dbmate:
-        condition: service_completed_successfully
+      database:
+        condition: service_started
     restart: unless-stopped
     environment:
       DISCORD_APP_ID: ${DISCORD_APP_ID}
