@@ -71,8 +71,8 @@ func main() {
 		log.Fatal().Msg("DISCORD_PUBLIC_KEY environment variable not set.")
 	}
 
-	if os.Getenv("DISCORD_PRIVATE_KEY") == "" {
-		log.Fatal().Msg("DISCORD_PRIVATE_KEY environment variable not set.")
+	if os.Getenv("DISCORD_PRIVATE_TOKEN") == "" {
+		log.Fatal().Msg("DISCORD_PRIVATE_TOKEN environment variable not set.")
 	}
 
 	// Read in DEBUG env variable, defaulting to False.
