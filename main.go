@@ -38,6 +38,48 @@ func main() {
 		log.Info().Msg("No .env file found.")
 	}
 
+	// Checks if environment variables are set
+	if os.Getenv("DATABASE_USER") == "" {
+		log.Fatal().Msg("DATABASE_USER environment variable not set.")
+	}
+
+	if os.Getenv("DATABASE_PASSWORD") == "" {
+		log.Fatal().Msg("DATABASE_PASSWORD environment variable not set.")
+	}
+
+	if os.Getenv("DATABASE_DB") == "" {
+		log.Fatal().Msg("DATABASE_DB environment variable not set.")
+	}
+
+	if os.Getenv("DATABASE_ADDRESS") == "" {
+		log.Fatal().Msg("DATABASE_ADDRESS environment variable not set.")
+	}
+
+	if os.Getenv("DATABASE_PORT") == "" {
+		log.Fatal().Msg("DATABASE_PORT environment variable not set.")
+	}
+
+	if os.Getenv("DATABASE_URL") == "" {
+		log.Fatal().Msg("DATABASE_URL environment variable not set.")
+	}
+
+	if os.Getenv("DEBUG") == "" {
+		log.Fatal().Msg("DEBAG environment variable not set.")
+	}
+
+	if os.Getenv("DISCORD_APP_ID") == "" {
+		log.Fatal().Msg("DISCORD_APP_ID environment variable not set.")
+	}
+
+	if os.Getenv("DISCORD_PUBLIC_KEY") == "" {
+		log.Fatal().Msg("DISCORD_PUBLIC_KEY environment variable not set.")
+	}
+
+	if os.Getenv("DISCORD_PRIVATE_KEY") == "" {
+		log.Fatal().Msg("DISCORD_PRIVATE_KEY environment variable not set.")
+	}
+
+	// Read in DEBUG env variable, defaulting to False.
 	isDebug, err := strconv.ParseBool(os.Getenv("DEBUG"))
 	if err != nil {
 		isDebug = false
