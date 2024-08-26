@@ -63,10 +63,6 @@ func main() {
 		log.Fatal().Msg("DATABASE_URL environment variable not set.")
 	}
 
-	if os.Getenv("DEBUG") == "" {
-		log.Fatal().Msg("DEBAG environment variable not set.")
-	}
-
 	if os.Getenv("DISCORD_APP_ID") == "" {
 		log.Fatal().Msg("DISCORD_APP_ID environment variable not set.")
 	}
